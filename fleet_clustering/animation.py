@@ -38,7 +38,6 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=20):
         cnts = Counter([x[:3] for x in fleet_map[fid]]).most_common()
         sigssvid = [s for (s, c) in cnts if c / len(fleet_map[fid]) > 0.1]
         label = ",".join(sigssvid)
-        print(i, sigssvid, cnts)
         points, = plt.plot([], [], marker, alpha=1, color=color, markersize=markersize, label=label)
         point_sets.append(points)
 

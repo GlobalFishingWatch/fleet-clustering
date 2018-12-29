@@ -7,7 +7,7 @@ from mpl_toolkits.basemap import Basemap
 import numpy as np
 
 
-def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=20):
+def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30):
 
 
     n_fleets = min(max_fleets, max(labels) + 1)
@@ -29,7 +29,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=20):
     points, = plt.plot([], [], '.', alpha=1, markersize=4, color='#dddddd')
     point_sets = [points]
     cmap = plt.get_cmap("tab10")
-    CYCLE = 9
+    CYCLE = 10
     for i in range(n_fleets):
         color = cmap(i % CYCLE)
         marker = ['.', 'x', '+'][i // CYCLE]

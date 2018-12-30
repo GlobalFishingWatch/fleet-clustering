@@ -1,29 +1,39 @@
 from __future__ import print_function
 from __future__ import division
-from collections import Counter, defaultdict
+from collections import Counter, defaultdict, OrderedDict
 import matplotlib.pyplot as plt
 from matplotlib import animation
 from mpl_toolkits.basemap import Basemap
 import numpy as np
 
 
-def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30):
 
-
-    n_fleets = min(max_fleets, max(labels) + 1)
-
+def make_fleet_map(ssvids, labels):
     fleet_map = defaultdict(list)
     for s, lbl in zip(ssvids, labels):
         if lbl != -1:
             fleet_map[lbl].append(s)
+    fleet_ids = fleet_map.keys()
+    indices = np.argsort([len(fleet_map[x]) for x in fleet_ids])[::-1]
+    ofleet_map = OrderedDict([(fleet_ids[i], fleet_map[fleet_ids[i]]) for i in indices])
+    return ofleet_map
+
+
+def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None):
+
+    n_fleets = min(max_fleets, max(labels) + 1)
+    fleet_map = make_fleet_map(ssvids, labels)
 
     fleet_ids = fleet_map.keys()
-    fleet_lengths = [len(fleet_map[x]) for x in fleet_ids]
-    indices = np.argsort(fleet_lengths)[::-1]
 
     fig, ax = plt.subplots(figsize = (14, 7))
 
-    projection = Basemap(lon_0=-155, projection='eck4', resolution="l", ax=ax)
+
+    if region.lower() == 'mediterranean':
+        projection = Basemap(projection='merc', llcrnrlat=29, urcrnrlat=49,
+                             llcrnrlon=-10, urcrnrlon=40, resolution='l', ax=ax)
+    else:
+        projection = Basemap(lon_0=-155, projection='eck4', resolution="l", ax=ax)
     projection.fillcontinents(color='#BBBBBB',lake_color='#BBBBBB')
 
     points, = plt.plot([], [], '.', alpha=1, markersize=4, color='#dddddd')
@@ -34,7 +44,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30):
         color = cmap(i % CYCLE)
         marker = ['.', 'x', '+'][i // CYCLE]
         markersize = [12, 8, 8][i // CYCLE]
-        fid = fleet_ids[indices[i]]
+        fid = fleet_ids[i]
         cnts = Counter([x[:3] for x in fleet_map[fid]]).most_common()
         sigssvid = [s for (s, c) in cnts if c / len(fleet_map[fid]) > 0.1]
         label = ",".join(sigssvid)
@@ -64,8 +74,8 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30):
         lons, lats = projection(df.lon.values, df.lat.values)
         mask = [y in ssvid_set for y in df.ssvid]
         point_sets[0].set_data(lons[mask], lats[mask])
-        for j, n in enumerate(indices[:n_fleets]):
-            fid = fleet_ids[n]
+        for j in range(n_fleets):
+            fid = fleet_ids[j]
             fleet_ssvids = set(fleet_map[fid])
             mask = [y in fleet_ssvids for y in df.ssvid]
             lons, lats = projection(df.lon[mask].values, df.lat[mask].values)

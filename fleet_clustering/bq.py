@@ -22,7 +22,8 @@ import sys
 import time
 import ujson as json
 
-def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=10, include_carriers=False, fishing_only=False):
+def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=10, include_carriers=False, 
+                fishing_only=False, show_query=False):
     if not isinstance(vessel_types, (tuple, list)):
         vessel_types = [vessel_types]
     if include_carriers:
@@ -69,7 +70,8 @@ def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=1
     WHERE rk = 1
     ORDER BY ssvid
     """.format(start_yyyymmdd, end_yyyymmdd, 1000 * min_km_from_shore, vessel_types_str, fishing_condition, extra_condition)
-    print(query)
+    if show_query:
+        print(query)
     return pd.read_gbq(query, dialect='standard', project_id='world-fishing-827')
 
 

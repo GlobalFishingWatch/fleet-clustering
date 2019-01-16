@@ -22,15 +22,18 @@ def make_fleet_map(ssvids, labels):
 def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None, fleets=None, alpha=1.0,
                 show_ungrouped=True, legend_cols=None, ungrouped_legend=None):
 
-    n_fleets = min(max_fleets, max(labels) + 1)
     fleet_map = make_fleet_map(ssvids, labels)
 
-    fleet_ids = sorted(fleet_map.keys())
+    if fleets is None:
+        fleet_ids = fleet_map.keys()
+    else:
+        fleet_ids = fleets.keys()
+    n_fleets = min(max_fleets, len(fleet_ids))
 
     fig, ax = plt.subplots(figsize = (14, 7))
 
     if legend_cols is None:
-        legend_cols = n_fleets//4 + 1
+        legend_cols = n_fleets // 4 + 1
 
 
     if region and region.lower() == 'mediterranean':
@@ -44,8 +47,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
     point_sets = [points]
     cmap = plt.get_cmap("tab10")
     CYCLE = 10
-    for i in range(n_fleets):
-        fid = fleet_ids[i]
+    for i, fid in enumerate(fleet_ids):
         if fleets and fid in fleets:
             marker, color, bgcolor, markersize, markeredgewidth, label = fleets[fid]
         else:
@@ -94,7 +96,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
             point_sets[0].set_data(lons[mask], lats[mask])
         else:
             point_sets[0].set_data([], [])
-        for j in range(n_fleets):
+        for j, fid in enumerate(fleet_ids):
             fid = fleet_ids[j]
             if fleets and fid not in fleets:
                 continue

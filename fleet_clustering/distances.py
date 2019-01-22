@@ -139,6 +139,54 @@ def compute_distances_3(C, days=180, min_clip=0, max_clip=np.inf):
     return distances
 
 
+def compute_distances_4(C, gamma=2, min_clip=1, max_clip=np.inf):
+    # Compute the distances, ignoring infs
+    assert min_clip > 0
+    AVG_EARTH_RADIUS = 6371  # in km
+    n = len(C)
+    m = C.shape[1] // 2
+    distances = np.zeros([n, n])
+    Cr = np.radians(C)
+    Cr_mask = np.isinf(Cr) 
+    Crm = Cr.copy()
+    Crm[Cr_mask] = 0
+    for i in range(n):
+        ds = np.zeros([n, m])
+        for j in range(0, m):
+            lat1 = Crm[i, None, 2 * j + 1]
+            lat2 = Crm[:, 2 * j + 1]
+            lng1 = Crm[i, None, 2 * j]
+            lng2 = Crm[:, 2 * j]
+            lat = lat2 - lat1
+            lng = lng2 - lng1
+            d = np.sin(lat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(lng / 2) ** 2
+            h = 2 * AVG_EARTH_RADIUS * np.arcsin(np.sqrt(d))
+            h = np.clip(h, min_clip, max_clip)
+            ds[:, j] = h
+        # Replace any nans with infs so we can sort them out of the way
+        mask = np.isnan(ds)
+        ds[mask] = np.inf
+        ds.sort(axis=1)
+        # Make a new mask indicating good data.
+        mask = ~np.isinf(ds)
+        weights = np.linspace(1, 0, ds.shape[1]) ** gamma #np.exp(-0.5 * (np.arange(d2s.shape[1]) / float(days)) ** 2)
+        assert not np.isnan(weights).sum()
+        assert weights.sum() > 0
+        for j in range(n):
+            submask = mask[j]
+            subweights = weights[submask]
+            norm = subweights.sum()
+            if norm == 0:
+                d = np.inf
+            else:
+                d = np.exp((np.log(ds[j, submask]) * subweights).sum() / norm)
+                assert not np.isnan(d)
+            distances[i, j] = d 
+    distances[np.isnan(distances)] = np.inf
+    return distances
+
+
+
 def infclip(X, v):
     Y = np.minimum(X, v)
     Y[np.isinf(X)] = np.inf

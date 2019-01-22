@@ -42,7 +42,8 @@ def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=1
            day,
            lon,
            lat,
-           iscarrier
+           iscarrier,
+           distance_from_shore_km
     FROM (
         SELECT a.ssvid, 
                EXTRACT(YEAR FROM timestamp) year,
@@ -53,7 +54,8 @@ def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=1
                ROW_NUMBER() OVER(PARTITION BY a.ssvid,  TIMESTAMP_TRUNC(a.timestamp, DAY)
                                  ORDER BY ABS(TIMESTAMP_DIFF(a.timestamp , 
                                               TIMESTAMP_TRUNC(a.timestamp, DAY), SECOND) - 12 * 60 * 60 ) ASC) AS rk,
-               c.iscarriervessel AND c.confidence = 3 AS iscarrier
+               c.iscarriervessel AND c.confidence = 3 AS iscarrier,
+               distance_from_shore_m / 1000.0 AS distance_from_shore_km
         FROM 
         `world-fishing-827.pipe_production_b.messages_scored_*` a
             JOIN
@@ -64,7 +66,7 @@ def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=1
             ON a.ssvid = CAST(c.mmsi AS STRING)
         WHERE _TABLE_SUFFIX BETWEEN "{}" AND "{}"
         AND seg_id in (select seg_id from gfw_research.pipe_production_b_segs where good_seg)
-        AND a.distance_from_shore_m > {}
+        AND a.distance_from_shore_m >= {}
         AND ( (b.best_label in ({}) {}) {} )
     )
     WHERE rk = 1

@@ -20,7 +20,7 @@ def make_fleet_map(ssvids, labels):
 
 
 def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None, fleets=None, alpha=1.0,
-                show_ungrouped=True, legend_cols=None, ungrouped_legend=None):
+                show_ungrouped=True, legend_cols=None, ungrouped_legend=None, lon_0=-155):
 
     fleet_map = make_fleet_map(ssvids, labels)
 
@@ -30,7 +30,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
         fleet_ids = fleets.keys()
     n_fleets = min(max_fleets, len(fleet_ids))
 
-    fig, ax = plt.subplots(figsize = (14, 7))
+    fig, ax = plt.subplots(figsize = (20, 10))
 
     if legend_cols is None:
         legend_cols = n_fleets // 4 + 1
@@ -40,7 +40,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
         projection = Basemap(projection='merc', llcrnrlat=29, urcrnrlat=49,
                              llcrnrlon=-10, urcrnrlon=40, resolution='l', ax=ax)
     else:
-        projection = Basemap(lon_0=-155, projection='kav7', resolution="l", ax=ax)
+        projection = Basemap(lon_0=lon_0, projection='kav7', resolution="l", ax=ax)
     projection.fillcontinents(color='#BBBBBB',lake_color='#BBBBBB')
 
     points, = plt.plot([], [], '.', alpha=1, markersize=2, color='#dddddd')

@@ -37,9 +37,15 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
 
 
     if region and region.lower() == 'mediterranean':
+        fig, ax = plt.subplots(figsize = (20, 10))  
         projection = Basemap(projection='merc', llcrnrlat=29, urcrnrlat=49,
                              llcrnrlon=-10, urcrnrlon=40, resolution='l', ax=ax)
+    elif region and region.lower() == 'europe':
+        fig, ax = plt.subplots(figsize = (10, 15))
+        projection = Basemap(projection='merc', llcrnrlat=15, urcrnrlat=70,
+                             llcrnrlon=-20, urcrnrlon=40, resolution='l', ax=ax)
     else:
+        fig, ax = plt.subplots(figsize = (20, 10))
         projection = Basemap(lon_0=lon_0, projection='kav7', resolution="l", ax=ax)
     projection.fillcontinents(color='#BBBBBB',lake_color='#BBBBBB')
 

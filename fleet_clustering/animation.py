@@ -4,6 +4,7 @@ from collections import Counter, defaultdict, OrderedDict
 import matplotlib.pyplot as plt
 from matplotlib import animation
 from mpl_toolkits.basemap import Basemap
+from skimage import io
 import numpy as np
 
 
@@ -33,7 +34,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
     fig, ax = plt.subplots(figsize = (20, 10))
 
     if legend_cols is None:
-        legend_cols = n_fleets // 4 + 1
+        legend_cols = n_fleets // 20 + 1
 
 
     if region and region.lower() == 'mediterranean':
@@ -45,11 +46,16 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
         projection = Basemap(projection='merc', llcrnrlat=15, urcrnrlat=70,
                              llcrnrlon=-20, urcrnrlon=40, resolution='l', ax=ax)
     else:
-        fig, ax = plt.subplots(figsize = (20, 10))
-        projection = Basemap(lon_0=lon_0, projection='kav7', resolution="l", ax=ax)
-    projection.fillcontinents(color='#BBBBBB',lake_color='#BBBBBB')
+        fig, ax = plt.subplots(figsize = (16, 10))
+        projection = Basemap(lon_0=lon_0, projection='robin', resolution="l", ax=ax)
+    projection.fillcontinents(color='#37496D', #color='#2A3651',
+                              lake_color='#0A1738')
+    projection.drawcountries(color='#222D4B')
+    projection.drawmapboundary(fill_color='#0A1738', color='#222D4B')
+    projection.drawmapboundary(fill_color='none', color='#222D4B', 
+        zorder=1000, linewidth=4)
 
-    points, = plt.plot([], [], '.', alpha=1, markersize=2, color='#dddddd')
+    points, = plt.plot([], [], '.', alpha=1, markersize=2, color='#777777')
     point_sets = [points]
     cmap = plt.get_cmap("tab10")
     CYCLE = 10
@@ -74,17 +80,28 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
                         markersize=markersize, label=label, markeredgewidth=markeredgewidth)
         point_sets.append(points)
     if ungrouped_legend:
-        plt.plot([], [], '.', alpha=1, markersize=2, color='#888888', label=ungrouped_legend)
+        plt.plot([], [], '.', alpha=1, markersize=2, color='#777777', label=ungrouped_legend)
 
 
-    title = plt.title('DATE')
-    legend = plt.legend(loc=8, framealpha=0.8, ncol=legend_cols)
+    title = plt.title('DATE', color='white')
+    legend = plt.legend(bbox_to_anchor=(0.5, -0.03), loc="upper center", ncol=legend_cols, facecolor="none",
+        framealpha=1.0, edgecolor='none')
     if legend is not None:
         for lh in legend.legendHandles: 
             lh._legmarker.set_alpha(1)
-        legend.get_frame().set_linewidth(0.0)
+        for text in legend.get_texts():
+            text.set_color("white")
+
+    # this is another inset axes over the main axes
+    a = plt.axes([0.27, 0.13, .12, .12], facecolor='none')
+    img = io.imread('GFW_logo_primary_RGB.png')
+    plt.imshow(img)
+    plt.axis('off')
+    plt.xticks([])
+    plt.yticks([])
 
     plt.tight_layout()
+    plt.subplots_adjust(bottom=0.11)
 
     def init():
         for i in range(2 * n_fleets + 1):
@@ -106,7 +123,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
             fid = fleet_ids[j]
             if fleets and fid not in fleets:
                 continue
-            fleet_ssvids = set(fleet_map[fid])
+            fleet_ssvids = set(fleet_map.get(fid, ()))
             mask = [(y.ssvid in fleet_ssvids and bool(y.iscarrier)) for y in df.itertuples()]
             if sum(mask):
                 lons, lats = projection(df.lon[mask].values, df.lat[mask].values)
@@ -123,5 +140,5 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
         return point_sets[::-1]
 
     return animation.FuncAnimation(fig, animate, init_func=init,
-                                   frames=len(df_by_date)//interval, interval=500, 
+                                   frames=len(df_by_date)//interval, interval=250, 
                                    blit=True)

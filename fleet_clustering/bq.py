@@ -36,6 +36,35 @@ def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=1
         fishing_condition = ""
     vessel_types_str = ', '.join(['"{}"'.format(x) for x in vessel_types])
     query = """
+    WITH 
+    base as (
+        SELECT ssvid, 
+               EXTRACT(YEAR FROM timestamp) year,
+               EXTRACT(MONTH FROM timestamp) month,
+               EXTRACT(DAY FROM timestamp) day,
+               lon,
+               lat,
+               TIMESTAMP_TRUNC(timestamp, MINUTE) AS minute_stamp,
+               distance_from_shore_m / 1000.0 AS distance_from_shore_km
+        FROM 
+        `world-fishing-827.pipe_production_b.messages_scored_*`
+        WHERE _TABLE_SUFFIX BETWEEN "{}" AND "{}"
+        AND seg_id in (select seg_id from gfw_research.pipe_production_b_segs where good_seg)
+        AND distance_from_shore_m >= {}
+    ),
+    thinned as (
+        SELECT ssvid, year, month, day, 
+               APPROX_QUANTILES(lon, 2)[OFFSET(1)] AS lon,
+               APPROX_QUANTILES(lat, 2)[OFFSET(1)] AS lat,
+               APPROX_QUANTILES(distance_from_shore_km, 2)[OFFSET(1)] AS distance_from_shore_km,
+               minute_stamp
+        FROM 
+        base
+        GROUP BY 
+        minute_stamp, ssvid, year, month, day
+    )
+
+
     SELECT ssvid,
            year,
            month,
@@ -46,27 +75,24 @@ def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=1
            distance_from_shore_km
     FROM (
         SELECT a.ssvid, 
-               EXTRACT(YEAR FROM timestamp) year,
-               EXTRACT(MONTH FROM timestamp) month,
-               EXTRACT(DAY FROM timestamp) day,
+               a.year,
+               a.month,
+               a.day,
                a.lon AS lon,
                a.lat AS lat,
-               ROW_NUMBER() OVER(PARTITION BY a.ssvid,  TIMESTAMP_TRUNC(a.timestamp, DAY)
-                                 ORDER BY ABS(TIMESTAMP_DIFF(a.timestamp , 
-                                              TIMESTAMP_TRUNC(a.timestamp, DAY), SECOND) - 12 * 60 * 60 ) ASC) AS rk,
+               ROW_NUMBER() OVER(PARTITION BY a.ssvid,  TIMESTAMP_TRUNC(a.minute_stamp, DAY)
+                                 ORDER BY ABS(TIMESTAMP_DIFF(a.minute_stamp , 
+                                              TIMESTAMP_TRUNC(a.minute_stamp, DAY), minute) - 12 * 60 ) ASC) AS rk,
                c.iscarriervessel AND c.confidence = 3 AS iscarrier,
-               distance_from_shore_m / 1000.0 AS distance_from_shore_km
+               distance_from_shore_km
         FROM 
-        `world-fishing-827.pipe_production_b.messages_scored_*` a
+        thinned a
             JOIN
         `world-fishing-827.gfw_research.vessel_info_allyears_20181002` b
             ON a.ssvid = CAST(b.mmsi AS STRING)
             JOIN 
         `world-fishing-827.vessel_database.all_vessels_20190102` c
             ON a.ssvid = CAST(c.mmsi AS STRING)
-        WHERE _TABLE_SUFFIX BETWEEN "{}" AND "{}"
-        AND seg_id in (select seg_id from gfw_research.pipe_production_b_segs where good_seg)
-        AND a.distance_from_shore_m >= {}
         AND ( (b.best_label in ({}) {}) {} )
     )
     WHERE rk = 1
@@ -77,14 +103,14 @@ def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=1
     return pd.read_gbq(query, dialect='standard', project_id='world-fishing-827')
 
 
-def load_ais_by_date(vessel_types, start_date, end_date, min_km_from_shore=10, include_carriers=False, fishing_only=False):
+def load_ais_by_date(vessel_types, start_date, end_date, min_km_from_shore=10, include_carriers=False, fishing_only=False, show_queries=False):
     dfs = []
     d0 = start_date
     while d0 < end_date:
         print(d0)
-        d1 = min(d0 + datetime.timedelta(days=366), end_date)
+        d1 = min(d0 + datetime.timedelta(days=183), end_date)
         df = load_raw_ais(vessel_types, "{:%Y%m%d}".format(d0), "{:%Y%m%d}".format(d1), 
-                            min_km_from_shore, include_carriers, fishing_only)
+                            min_km_from_shore, include_carriers, fishing_only, show_query=show_queries)
         dfs.append(df)
         d0 = d1 + datetime.timedelta(days=1)
     df = pd.concat(dfs)

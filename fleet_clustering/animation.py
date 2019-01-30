@@ -93,7 +93,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
             text.set_color("white")
 
     # this is another inset axes over the main axes
-    a = plt.axes([0.27, 0.13, .12, .12], facecolor='none')
+    a = plt.axes([0.25, 0.11, .16, .16], facecolor='none')
     img = io.imread('GFW_logo_primary_RGB.png')
     plt.imshow(img)
     plt.axis('off')

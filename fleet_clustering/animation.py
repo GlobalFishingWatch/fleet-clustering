@@ -21,7 +21,9 @@ def make_fleet_map(ssvids, labels):
 
 
 def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None, fleets=None, alpha=1.0,
-                show_ungrouped=True, legend_cols=None, ungrouped_legend=None, lon_0=-155):
+                show_ungrouped=True, legend_cols=None, ungrouped_legend=None, lon_0=-155,
+                figsize=None, bottom_adjust=0.11, top_adjust=None, 
+                logo_loc=(0.25, 0.11, .16, .16), text_color='white'):
 
     fleet_map = make_fleet_map(ssvids, labels)
 
@@ -31,25 +33,27 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
         fleet_ids = fleets.keys()
     n_fleets = min(max_fleets, len(fleet_ids))
 
-    fig, ax = plt.subplots(figsize = (20, 10))
-
     if legend_cols is None:
         legend_cols = n_fleets // 20 + 1
 
-
     if region and region.lower() == 'mediterranean':
-        fig, ax = plt.subplots(figsize = (20, 10))  
+        if figsize is None:
+            figsize = (20, 10)
+        fig, ax = plt.subplots(figsize=figsize)  
         projection = Basemap(projection='merc', llcrnrlat=29, urcrnrlat=49,
                              llcrnrlon=-10, urcrnrlon=40, resolution='l', ax=ax)
     elif region and region.lower() == 'europe':
-        fig, ax = plt.subplots(figsize = (10, 15))
+        if figsize is None:
+            figsize = (10, 15)
+        fig, ax = plt.subplots(figsize=figsize)
         projection = Basemap(projection='merc', llcrnrlat=15, urcrnrlat=70,
                              llcrnrlon=-20, urcrnrlon=40, resolution='l', ax=ax)
     else:
-        fig, ax = plt.subplots(figsize = (16, 10))
+        if figsize is None:
+            figsize = (16, 10)
+        fig, ax = plt.subplots(figsize=figsize)
         projection = Basemap(lon_0=lon_0, projection='robin', resolution="l", ax=ax)
-    projection.fillcontinents(color='#37496D', #color='#2A3651',
-                              lake_color='#0A1738')
+    projection.fillcontinents(color='#37496D', lake_color='#0A1738')
     projection.drawcountries(color='#222D4B')
     projection.drawmapboundary(fill_color='#0A1738', color='#222D4B')
     projection.drawmapboundary(fill_color='none', color='#222D4B', 
@@ -83,17 +87,17 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
         plt.plot([], [], '.', alpha=1, markersize=2, color='#777777', label=ungrouped_legend)
 
 
-    title = plt.title('DATE', color='white')
+    title = plt.title('DATE', color=text_color)
     legend = plt.legend(bbox_to_anchor=(0.5, -0.03), loc="upper center", ncol=legend_cols, facecolor="none",
         framealpha=1.0, edgecolor='none')
     if legend is not None:
         for lh in legend.legendHandles: 
             lh._legmarker.set_alpha(1)
         for text in legend.get_texts():
-            text.set_color("white")
+            text.set_color(text_color)
 
     # this is another inset axes over the main axes
-    a = plt.axes([0.25, 0.11, .16, .16], facecolor='none')
+    a = plt.axes(logo_loc, facecolor='none')
     img = io.imread('GFW_logo_primary_RGB.png')
     plt.imshow(img)
     plt.axis('off')
@@ -101,7 +105,7 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
     plt.yticks([])
 
     plt.tight_layout()
-    plt.subplots_adjust(bottom=0.11)
+    plt.subplots_adjust(bottom=bottom_adjust, top=top_adjust)
 
     def init():
         for i in range(2 * n_fleets + 1):

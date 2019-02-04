@@ -23,7 +23,7 @@ def make_fleet_map(ssvids, labels):
 def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None, fleets=None, alpha=1.0,
                 show_ungrouped=True, legend_cols=None, ungrouped_legend=None, lon_0=-155,
                 figsize=None, bottom_adjust=0.11, top_adjust=None, 
-                logo_loc=(0.25, 0.11, .16, .16), text_color='white'):
+                logo_loc=(0.25, 0.11, .16, .16), text_color='white', plot_frame=None):
 
     fleet_map = make_fleet_map(ssvids, labels)
 
@@ -143,6 +143,11 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
         title.set_text(datestr)
         return point_sets[::-1]
 
-    return animation.FuncAnimation(fig, animate, init_func=init,
+    if plot_frame is not None:
+        init()
+        animate(plot_frame)
+        return fig
+    else:
+        return animation.FuncAnimation(fig, animate, init_func=init,
                                    frames=len(df_by_date)//interval, interval=250, 
                                    blit=True)

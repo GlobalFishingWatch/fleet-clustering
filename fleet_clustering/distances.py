@@ -48,98 +48,7 @@ def compute_distances_by_date(C):
     distances[np.isnan(distances)] = np.inf
     return distances
 
-def compute_distances(C, clip=np.inf, soft_clip=False):
-    # Compute the distances, ignoring infs
-    AVG_EARTH_RADIUS = 6371  # in km
-    n = len(C)
-    distances = np.zeros([n, n])
-    Cr = np.radians(C)
-    for i in range(n):
-        d2s = []
-        for j in range(0, Cr.shape[1], 2):
-            lat1 = Cr[i, None, j + 1]
-            lat2 = Cr[:, j + 1]
-            lng1 = Cr[i, None, j]
-            lng2 = Cr[:, j]
-            lat = lat2 - lat1
-            lng = lng2 - lng1
-            d = np.sin(lat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(lng / 2) ** 2
-            h = 2 * AVG_EARTH_RADIUS * np.arcsin(np.sqrt(d))
-            h0 = h
-            h = np.minimum(h, clip)
-            if soft_clip:
-                h += np.log(np.maximum(h - h0, 0) + 1)
-            d2s.append(h ** 2)
-        distances[i] = np.sqrt(np.nanmean(d2s, axis=0))
-    distances[np.isnan(distances)] = np.inf
-    return distances
-
-
-def compute_distances_2(C, days=180, clip=np.inf):
-    # Compute the distances, ignoring infs
-    AVG_EARTH_RADIUS = 6371  # in km
-    n = len(C)
-    m = C.shape[1] // 2
-    distances = np.empty([n, n])
-    distances.fill(np.nan)
-    Cr = np.radians(C)
-    for i in range(n):
-        d2s = np.zeros([m, n])
-        for j in range(0, m):
-            lat1 = Cr[i, None, 2 * j + 1]
-            lat2 = Cr[:, 2 * j + 1]
-            lng1 = Cr[i, None, 2 * j]
-            lng2 = Cr[:, 2 * j]
-            lat = lat2 - lat1
-            lng = lng2 - lng1
-            d = np.sin(lat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(lng / 2) ** 2
-            h = 2 * AVG_EARTH_RADIUS * np.arcsin(np.sqrt(d))
-            h = np.minimum(h, clip)
-            d2s[j] = (h ** 2)
-        for k in range(n):
-            mask = ~np.isnan(d2s[:, k])
-            x = d2s[mask, k]
-            x.sort()
-            x = x[:days]
-            if len(x):
-                distances[i, k] = np.sqrt(x.mean(axis=0))
-            else:
-                distances[i, k] = np.nan
-    distances[np.isnan(distances)] = np.inf
-    return distances
-
-def compute_distances_3(C, days=180, min_clip=0, max_clip=np.inf):
-    # Compute the distances, ignoring infs
-    AVG_EARTH_RADIUS = 6371  # in km
-    n = len(C)
-    m = C.shape[1] // 2
-    distances = np.zeros([n, n])
-    Cr = np.radians(C)
-    Cr_mask = np.isinf(Cr) 
-    Crm = Cr.copy()
-    Crm[Cr_mask] = 0
-    for i in range(n):
-        mask = np.logical_or.reduce(Cr_mask.reshape(n, m, 2), axis=2)
-        d2s = np.zeros([n, m])
-        for j in range(0, m):
-            lat1 = Crm[i, None, 2 * j + 1]
-            lat2 = Crm[:, 2 * j + 1]
-            lng1 = Crm[i, None, 2 * j]
-            lng2 = Crm[:, 2 * j]
-            lat = lat2 - lat1
-            lng = lng2 - lng1
-            d = np.sin(lat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(lng / 2) ** 2
-            h = 2 * AVG_EARTH_RADIUS * np.arcsin(np.sqrt(d))
-            h = np.clip(h, min_clip, max_clip)
-            d2s[:, j] = (h ** 2)
-        d2s[mask] = np.inf
-        d2s.sort(axis=1)
-        distances[i] = np.sqrt(np.nanmean(d2s[:, :days], axis=1))
-    distances[np.isnan(distances)] = np.inf
-    return distances
-
-
-def compute_distances_4(C, gamma=2, min_clip=1, max_clip=np.inf):
+def compute_distances_tweaked(C, gamma=2, min_clip=1, max_clip=np.inf):
     # Compute the distances, ignoring infs
     assert min_clip > 0
     AVG_EARTH_RADIUS = 6371  # in km
@@ -185,6 +94,49 @@ def compute_distances_4(C, gamma=2, min_clip=1, max_clip=np.inf):
     distances[np.isnan(distances)] = np.inf
     return distances
 
+# For backward compatibility
+compute_distances_4 = compute_distances_tweaked
+
+def compute_distances_RMS(C, gamma=2, min_clip=1, max_clip=np.inf):
+    # Compute the distances, ignoring infs
+    assert min_clip > 0
+    AVG_EARTH_RADIUS = 6371  # in km
+    n = len(C)
+    m = C.shape[1] // 2
+    distances = np.zeros([n, n])
+    Cr = np.radians(C)
+    Cr_mask = np.isinf(Cr) 
+    Crm = Cr.copy()
+    Crm[Cr_mask] = 0
+    for i in range(n):
+        ds = np.zeros([n, m])
+        for j in range(0, m):
+            lat1 = Crm[i, None, 2 * j + 1]
+            lat2 = Crm[:, 2 * j + 1]
+            lng1 = Crm[i, None, 2 * j]
+            lng2 = Crm[:, 2 * j]
+            lat = lat2 - lat1
+            lng = lng2 - lng1
+            d = np.sin(lat / 2) ** 2 + np.cos(lat1) * np.cos(lat2) * np.sin(lng / 2) ** 2
+            h = 2 * AVG_EARTH_RADIUS * np.arcsin(np.sqrt(d))
+            h = np.clip(h, min_clip, max_clip)
+            ds[:, j] = h
+        # Replace any nans with infs so we can sort them out of the way
+        mask = np.isnan(ds)
+        ds[mask] = np.inf
+        ds.sort(axis=1)
+        # Make a new mask indicating good data.
+        mask = ~np.isinf(ds)
+        for j in range(n):
+            submask = mask[j]
+            if submask.sum() == 0:
+                d = np.inf
+            else:
+                d = ds[j, submask].mean()
+                assert not np.isnan(d)
+            distances[i, j] = d 
+    distances[np.isnan(distances)] = np.inf
+    return distances
 
 
 def infclip(X, v):

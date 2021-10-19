@@ -1,1 +1,1 @@
-from bq import load_ais_by_date
+from .bq import load_ais_by_date

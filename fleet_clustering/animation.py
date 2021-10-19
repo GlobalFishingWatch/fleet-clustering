@@ -14,7 +14,7 @@ def make_fleet_map(ssvids, labels):
     for s, lbl in zip(ssvids, labels):
         if lbl != -1:
             fleet_map[lbl].append(s)
-    fleet_ids = fleet_map.keys()
+    fleet_ids = list(fleet_map.keys())
     indices = np.argsort([len(fleet_map[x]) for x in fleet_ids])[::-1]
     ofleet_map = OrderedDict([(fleet_ids[i], fleet_map[fleet_ids[i]]) for i in indices])
     return ofleet_map
@@ -28,9 +28,9 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
     fleet_map = make_fleet_map(ssvids, labels)
 
     if fleets is None:
-        fleet_ids = fleet_map.keys()
+        fleet_ids = list(fleet_map.keys())
     else:
-        fleet_ids = fleets.keys()
+        fleet_ids = list(fleets.keys())
     n_fleets = min(max_fleets, len(fleet_ids))
 
     if legend_cols is None:
@@ -48,6 +48,12 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
         fig, ax = plt.subplots(figsize=figsize)
         projection = Basemap(projection='merc', llcrnrlat=15, urcrnrlat=70,
                              llcrnrlon=-20, urcrnrlon=40, resolution='l', ax=ax)
+    elif region and region.lower() == 'pacific':
+        if figsize is None:
+            figsize = (16, 12)
+        fig, ax = plt.subplots(figsize=figsize)
+        projection = Basemap(projection='merc', llcrnrlat=-50, urcrnrlat=50,
+                             llcrnrlon=114, urcrnrlon=-69 + 360, resolution='l', ax=ax)
     else:
         if figsize is None:
             figsize = (16, 10)
@@ -118,7 +124,8 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
         datestr = sorted(df_by_date)[i*interval]
         df = df_by_date[datestr]
         if show_ungrouped:
-            lons, lats = projection(df.lon.values, df.lat.values)
+            lons = df.lon.values + 360 * (df.lon.values < 0)
+            lons, lats = projection(lons, df.lat.values)
             mask = [y in ssvid_set for y in df.ssvid]
             point_sets[0].set_data(lons[mask], lats[mask])
         else:
@@ -130,13 +137,15 @@ def make_anim(ssvids, labels, df_by_date, interval=1, max_fleets=30, region=None
             fleet_ssvids = set(fleet_map.get(fid, ()))
             mask = [(y.ssvid in fleet_ssvids and bool(y.iscarrier)) for y in df.itertuples()]
             if sum(mask):
-                lons, lats = projection(df.lon[mask].values, df.lat[mask].values)
+                lons = df.lon[mask].values + 360 * (df.lon[mask].values < 0)
+                lons, lats = projection(lons, df.lat[mask].values)
             else:
                 lons = lats = []
             point_sets[2 * j + 1].set_data(lons, lats)
             mask = [(y.ssvid in fleet_ssvids and not y.iscarrier) for y in df.itertuples()]
             if sum(mask):
-                lons, lats = projection(df.lon[mask].values, df.lat[mask].values)
+                lons = df.lon[mask].values + 360 * (df.lon[mask].values < 0)
+                lons, lats = projection(lons, df.lat[mask].values)
             else:
                 lons = lats = []
             point_sets[2 * j + 2].set_data(lons, lats)

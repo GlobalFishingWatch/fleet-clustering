@@ -44,7 +44,7 @@ from IPython.display import HTML
 from fleet_clustering import bq
 from fleet_clustering import filters
 from fleet_clustering import distances
-# from fleet_clustering import animation
+from fleet_clustering import animation
 
 # ## Load AIS Clustering Data
 #
@@ -52,12 +52,11 @@ from fleet_clustering import distances
 # from shores so as to exclude clustering on ports
 
 all_by_date = bq.load_ais_by_date('drifting_longlines', dt.date(2016, 1, 1),
-                                  dt.date(2016, 1, 31)
-                                  #dt.date(2018, 12, 31),
+                                  dt.date(2018, 12, 31),
                                  fishing_only=False, min_km_from_shore=0)    
 pruned_by_date = {k : filters.remove_near_shore(10,
                             filters.remove_chinese_coast(v)) for (k, v) in all_by_date.items()}
-valid_ssvid = sorted(filters.find_valid_ssvid(pruned_by_date))
+# valid_ssvid = sorted(filters.find_valid_ssvid(pruned_by_date))
 
 # ## Create Distance Metrics
 #
@@ -74,15 +73,23 @@ valid_ssvid = sorted(filters.find_valid_ssvid(pruned_by_date))
 # up together, etc.
 
 dists_by_date = {}
+valid_ssvid_by_date = {}
 
-for start_date, end_date in [('20160101', '20161231'),
-                             ('20170101', '20171231'), 
-                             ('20180101', '20181231')]:
+for start_date, end_date in [
+    ("20160101", "20161231"),
+    ("20170101", "20171231"),
+    ("20180101", "20181231"),
+]:
     if start_date in dists_by_date:
         continue
     print("computing distance for", start_date, end_date)
-    subset_by_date = {k : v for (k, v) in pruned_by_date.items() if start_date <= k <= end_date}
-    C = distances.create_composite_lonlat_array(subset_by_date, valid_ssvid)
+    subset_by_date = {
+        k: v for (k, v) in pruned_by_date.items() if start_date <= k <= end_date
+    }
+    valid_ssvid_by_date[start_date] = sorted(filters.find_valid_ssvid(subset_by_date))
+    C = distances.create_composite_lonlat_array(
+        subset_by_date, valid_ssvid_by_date[start_date]
+    )
     dists = distances.compute_distances_4(C, gamma=2)
     dists_by_date[start_date] = dists
 
@@ -125,24 +132,26 @@ for start_date, dists in dists_by_date.items():
     clusterer.fit(dists)
     raw_clusterers[start_date] = clusterer
 
+
 # ## Create Psuedo Distance From Fleet Membership
 
-pdists_by_date = {}
-for date in ['20160101', '20170101', '20180101']:
-    pdists = np.zeros_like(dists_by_date[date])
-    raw_labels = np.asarray(raw_clusterers[date].labels_)
-    SCALE = 1000
-    UNKNOWN_FLEET_DIST = 1 * SCALE
-    OTHER_FLEET_DIST = 2 * SCALE
-    mask = (raw_labels == -1)
-    for i, fid in enumerate(raw_labels):
-        if fid == -1:
-            pdists[i] = UNKNOWN_FLEET_DIST
-        else:
-            pdists[i] = OTHER_FLEET_DIST * (raw_labels != fid)
-            pdists[i, mask] = UNKNOWN_FLEET_DIST
-    pdists_by_date[date] = pdists
-
+# +
+# pdists_by_date = {}
+# for date in ['20160101', '20170101', '20180101']:
+#     pdists = np.zeros_like(dists_by_date[date])
+#     raw_labels = np.asarray(raw_clusterers[date].labels_)
+#     SCALE = 1000
+#     UNKNOWN_FLEET_DIST = 1 * SCALE
+#     OTHER_FLEET_DIST = 2 * SCALE
+#     mask = (raw_labels == -1)
+#     for i, fid in enumerate(raw_labels):
+#         if fid == -1:
+#             pdists[i] = UNKNOWN_FLEET_DIST
+#         else:
+#             pdists[i] = OTHER_FLEET_DIST * (raw_labels != fid)
+#             pdists[i, mask] = UNKNOWN_FLEET_DIST
+#     pdists_by_date[date] = pdists
+# -
 
 # ## Set up Fleets
 #
@@ -157,7 +166,7 @@ def to_rgb(string):
     return [int(x, 16) / 225.0 for x in (r, g, b)]
 
 
-def find_labels(dists):
+def find_labels(dists, valid_ssvid):
     clusterer = hdbscan.HDBSCAN(metric='precomputed', 
                                 min_cluster_size=9).fit(dists)
     
@@ -287,7 +296,9 @@ def adapt_fleet_mapping(base_fleets, base_ssvid, base_labels, new_ssivd, new_lab
 
 
 # +
-joint_ssvid_2017, labels_2017 = find_labels(dists_by_date['20170101'])
+import imp; imp.reload(animation)
+joint_ssvid_2017, labels_2017 = find_labels(dists_by_date['20170101'], 
+                                            valid_ssvid_by_date['20170101'])
 fleets_2017 = create_fleet_mapping(labels_2017)
 all_by_date_2017 = {k : v for (k, v) in all_by_date.items() if '20170101' <= k <= '20171231'}
 
@@ -301,6 +312,32 @@ anim = animation.make_anim(joint_ssvid_2017,
                            legend_cols=12,
                            ungrouped_legend="Ungrouped")
 HTML(anim.to_html5_video())
+
+
+# +
+joint_ssvid_2017, labels_2017 = find_labels(dists_by_date['20170101'], 
+                                            valid_ssvid_by_date['20170101'])
+fleets_2017 = create_fleet_mapping(labels_2017)
+all_by_date_2017 = {k : v for (k, v) in all_by_date.items() if '20170101' <= k <= '20171231'}
+
+
+anim = animation.make_anim(joint_ssvid_2017, 
+                           labels_2017, 
+                           all_by_date_2017, 
+                           interval=1,
+                           fleets=fleets_2017, 
+                           show_ungrouped=True,
+                           alpha=1,
+                           legend_cols=12,
+                           ungrouped_legend="Ungrouped")
+Writer = mpl_animation.writers['ffmpeg']
+writer = Writer(fps=8, metadata=dict(artist='Me'), bitrate=1800)
+anim.save('fleet_longlines_2017.mp4', writer=writer,
+          savefig_kwargs={'facecolor':'#222D4B'})
+# -
+
+# Stuff below here relies on pseudo distances and gluing years together, which 
+# is currently not working.
 
 # +
 joint_ssvid_2016, labels_2016 = find_labels(dists_by_date['20160101'] +                                
@@ -437,10 +474,3 @@ for x in available:
 
 mask = (np.array(labels_2017) == 28)
 np.array(joint_ssvid_2017)[mask]
-
-assert len(joint_ssvid_2017) == len(labels_2017)
-with open('fleet_longlines_2017.csv', 'w') as f:
-    f.write('mmsi,fleet\n')
-    for mmsi, fid in zip(joint_ssvid_2017, labels_2017):
-        if fid != -1 and fid in fleets_2017:
-            f.write("{},{}\n".format(mmsi, fleets_2017[fid][-1]))

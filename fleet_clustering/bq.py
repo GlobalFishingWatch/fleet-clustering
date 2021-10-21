@@ -22,21 +22,32 @@ import sys
 import time
 import ujson as json
 
-def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=10, include_carriers=False, 
-                fishing_only=False, show_query=False, ssvid=()):
+
+def load_raw_ais(
+    vessel_types,
+    start_yyyymmdd,
+    end_yyyymmdd,
+    min_km_from_shore=10,
+    include_carriers=False,
+    fishing_only=False,
+    show_query=False,
+    ssvid=(),
+):
     if not isinstance(vessel_types, (tuple, list)):
         vessel_types = [vessel_types]
     if include_carriers:
         extra_condition = "OR (c.iscarriervessel AND c.confidence = 3)"
     elif len(ssvid):
-        extra_condition = "or a.ssvid in ({})".format(','.join('"{}"'.format(x) for x in ssvid))
+        extra_condition = "or a.ssvid in ({})".format(
+            ",".join('"{}"'.format(x) for x in ssvid)
+        )
     else:
         extra_condition = ""
     if fishing_only:
         fishing_condition = "AND a.nnet_score > 0.5"
     else:
         fishing_condition = ""
-    vessel_types_str = ', '.join(['"{}"'.format(x) for x in vessel_types])
+    vessel_types_str = ", ".join(['"{}"'.format(x) for x in vessel_types])
     query = """
     WITH 
     base as (
@@ -49,8 +60,9 @@ def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=1
                TIMESTAMP_TRUNC(timestamp, MINUTE) AS minute_stamp,
                distance_from_shore_m / 1000.0 AS distance_from_shore_km
         FROM 
-        `world-fishing-827.pipe_production_v20200203.messages_scored_*`
+        `world-fishing-827.pipe_production_v20201001.messages_scored_*`
         WHERE _TABLE_SUFFIX BETWEEN "{}" AND "{}"
+        AND seg_id in (select seg_id from `gfw_research.pipe_v20201001_segs` where good_seg and not overlapping_and_short)
         AND distance_from_shore_m >= {}
     ),
     thinned as (
@@ -84,49 +96,83 @@ def load_raw_ais(vessel_types, start_yyyymmdd, end_yyyymmdd, min_km_from_shore=1
                ROW_NUMBER() OVER(PARTITION BY a.ssvid,  TIMESTAMP_TRUNC(a.minute_stamp, DAY)
                                  ORDER BY ABS(TIMESTAMP_DIFF(a.minute_stamp , 
                                               TIMESTAMP_TRUNC(a.minute_stamp, DAY), minute) - 12 * 60 ) ASC) AS rk,
-               c.iscarriervessel AND c.confidence = 3 AS iscarrier,
+               c.is_carrier AND r.confidence = 3 AS iscarrier,
                distance_from_shore_km
         FROM 
         thinned a
             JOIN
-        `world-fishing-827.gfw_research.vi_ssvid_v20190430` b
-            ON a.ssvid = b.ssvid
+        `world-fishing-827.gfw_research.vi_ssvid_v20210913` b
+            ON a.ssvid = CAST(b.ssvid AS STRING)
             JOIN 
-        `world-fishing-827.vessel_database.all_vessels_20190102` c
-            ON a.ssvid = CAST(c.mmsi AS STRING)
-        AND ( (best.best_vessel_class in ({}) {}) {} )
+        `world-fishing-827.vessel_database.all_vessels_v20210901` c
+            ON a.ssvid = CAST(c.identity.ssvid AS STRING),
+            unnest (registry) as r
+        WHERE ( (b.best.best_vessel_class in ({}) {}) {} )
     )
     WHERE rk = 1
     ORDER BY ssvid
-    """.format(start_yyyymmdd, end_yyyymmdd, 1000 * min_km_from_shore, vessel_types_str, fishing_condition, extra_condition)
+    """.format(
+        start_yyyymmdd,
+        end_yyyymmdd,
+        1000 * min_km_from_shore,
+        vessel_types_str,
+        fishing_condition,
+        extra_condition,
+    )
     if show_query:
         print(query)
-    return pd.read_gbq(query, dialect='standard', project_id='world-fishing-827')
+    return pd.read_gbq(query, dialect="standard", project_id="world-fishing-827")
 
 
-def load_ais_by_date(vessel_types, start_date, end_date, min_km_from_shore=10, include_carriers=False, 
-          fishing_only=False, show_queries=False, ssvid=()):
+def load_ais_by_date(
+    vessel_types,
+    start_date,
+    end_date,
+    min_km_from_shore=10,
+    include_carriers=False,
+    fishing_only=False,
+    show_queries=False,
+    ssvid=(),
+):
     dfs = []
     d0 = start_date
     while d0 < end_date:
         print(d0)
         d1 = min(d0 + datetime.timedelta(days=183), end_date)
-        df = load_raw_ais(vessel_types, "{:%Y%m%d}".format(d0), "{:%Y%m%d}".format(d1), 
-                            min_km_from_shore, include_carriers, fishing_only, show_query=show_queries,
-                            ssvid=ssvid)
+        df = load_raw_ais(
+            vessel_types,
+            "{:%Y%m%d}".format(d0),
+            "{:%Y%m%d}".format(d1),
+            min_km_from_shore,
+            include_carriers,
+            fishing_only,
+            show_query=show_queries,
+            ssvid=ssvid,
+        )
         dfs.append(df)
         d0 = d1 + datetime.timedelta(days=1)
     df = pd.concat(dfs)
+    df.sort_values(by=["year", "month", "day"], inplace=True)
     df_by_date = {}
     d = start_date
+    start_ndx = 0
     while d <= end_date:
-        datestr = "{:4d}{:02d}{:02d}".format(d.year, d.month, d.day)
-        mask = (df.year == d.year) & (df.month == d.month) & (df.day == d.day)
-        if mask.sum():
-            df_by_date[datestr] = df[mask]
+        print(".", end=".", flush=True)
+        for i, x in enumerate(df.iloc[start_ndx:].itertuples()):
+            if datetime.date(x.year, x.month, x.day) >= d:
+                break
+            start_ndx += 1
+        end_ndx = start_ndx
+        for i, x in enumerate(df.iloc[end_ndx:].itertuples()):
+            if datetime.date(x.year, x.month, x.day) > d:
+                break
+            end_ndx += 1
+        if end_ndx > start_ndx:
+            datestr = "{:4d}{:02d}{:02d}".format(d.year, d.month, d.day)
+            df_by_date[datestr] = df.iloc[start_ndx:end_ndx].reset_index(drop=True)
         d += datetime.timedelta(days=1)
+        start_ndx = end_ndx
     return df_by_date
-
 
 
 def load_carriers(start_year, end_year):
@@ -140,31 +186,35 @@ def load_carriers(start_year, end_year):
                mean_latitude as lat, 
                1 AS iscarrier
         FROM 
-        `world-fishing-827.pipe_production_v20200203.encounters` AS a
+        `world-fishing-827.pipe_production_v20201001.encounters` AS a
         JOIN
-        `world-fishing-827.pipe_production_v20200203.vessel_info` AS b
+        `world-fishing-827.pipe_production_v20201001.vessel_info` AS b
         ON a.vessel_1_id = b.vessel_id
         JOIN
-        `world-fishing-827.pipe_production_v20200203.vessel_info` AS c
+        `world-fishing-827.pipe_production_v20201001.vessel_info` AS c
         ON a.vessel_2_id = c.vessel_id
         WHERE 
         (
             b.ssvid in (
-               SELECT CAST(mmsi AS STRING) FROM
-               `world-fishing-827.vessel_database.all_vessels_20190102`
-               WHERE  iscarriervessel AND confidence = 3
+               SELECT CAST( identity.ssvid AS STRING) FROM
+               `world-fishing-827.vessel_database.all_vessels_v20210901`,
+               unnest (registry) as r
+               WHERE  is_carrier AND r.confidence = 3
                   )
         OR
             c.ssvid in (
-               SELECT CAST(mmsi AS STRING) FROM
-               `world-fishing-827.vessel_database.all_vessels_20190102`
-               WHERE  iscarriervessel AND confidence = 3
+               SELECT CAST( identity.ssvid AS STRING) FROM
+               `world-fishing-827.vessel_database.all_vessels_v20210901`,
+               unnest (registry) as r
+               WHERE  is_carrier AND r.confidence = 3
                   )
         )
         AND
              {} <= EXTRACT(YEAR FROM start_time) and EXTRACT(YEAR FROM start_time) <= {}
-    """.format(start_year, end_year)
-    return pd.read_gbq(query, dialect='standard', project_id='world-fishing-827')
+    """.format(
+        start_year, end_year
+    )
+    return pd.read_gbq(query, dialect="standard", project_id="world-fishing-827")
 
 
 def load_carriers_by_year(start_year, end_year):

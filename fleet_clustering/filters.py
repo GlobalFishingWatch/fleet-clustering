@@ -9,19 +9,20 @@ def remove_chinese_coast(df):
         rows.append(x)
     return pd.DataFrame(rows)
 
+
 def remove_near_shore(min_distance_km, df):
-    mask = (df.distance_from_shore_km >= min_distance_km)
+    mask = df.distance_from_shore_km >= min_distance_km
     return df[mask]
 
 
 def remove_carriers(df):
-    return df[(df.iscarrier != True)]
+    return df[(df.iscarrier != 1)]
 
 
 def is_valid_mmsi(mmsi):
     if len(mmsi) != 9:
         return False
-    if not '2' <= mmsi[0] <= '7':
+    if not "2" <= mmsi[0] <= "7":
         return False
     return True
 

@@ -36,7 +36,7 @@ def load_raw_ais(
     if not isinstance(vessel_types, (tuple, list)):
         vessel_types = [vessel_types]
     if include_carriers:
-        extra_condition = "OR (c.iscarriervessel AND c.confidence = 3)"
+        extra_condition = "OR (iscarrier)"
     elif len(ssvid):
         extra_condition = "or a.ssvid in ({})".format(
             ",".join('"{}"'.format(x) for x in ssvid)
@@ -85,7 +85,9 @@ def load_raw_ais(
            lon,
            lat,
            iscarrier,
-           distance_from_shore_km
+           distance_from_shore_km,
+           ssvid IN (SELECT mmsi FROM
+            `world-fishing-827.scratch_jaeyoon.twn_foc_final_mmsis_flat`) AS is_foc
     FROM (
         SELECT a.ssvid, 
                a.year,

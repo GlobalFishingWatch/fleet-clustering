@@ -39,7 +39,7 @@ def make_anim(
     bottom_adjust=0.11,
     top_adjust=None,
     logo_loc=(0.25, 0.11, 0.16, 0.16),
-    text_color="white",
+    text_color="black",
     plot_frame=None,
 ):
 
@@ -56,7 +56,7 @@ def make_anim(
 
     if figsize is None:
         figsize = (20, 10)
-    fig = plt.figure(figsize=figsize)
+    fig = plt.figure(figsize=figsize, dpi=180, facecolor='#f7f7f7')
 
     # if region and region.lower() == 'mediterranean':
     #     if figsize is None:
@@ -88,8 +88,10 @@ def make_anim(
     #     zorder=1000, linewidth=4)
 
     with psm.context(psm.styles.dark):
-        ax = psm.create_map()
+        ax = psm.create_map(projection='global.pacific_centered')
         psm.add_land()
+        psm.add_eezs()
+        psm.add_countries()
 
     (points,) = ax.plot(
         [], [], ".", alpha=1, markersize=2, color="#777777", transform=psm.identity
@@ -117,7 +119,7 @@ def make_anim(
             alpha=alpha,
             markerfacecolor=bgcolor,
             markeredgecolor=color,
-            markersize=markersize,
+            markersize=markersize + 2,
             markeredgewidth=markeredgewidth,
             transform=psm.identity,
         )
@@ -128,9 +130,9 @@ def make_anim(
             [],
             marker,
             alpha=alpha,
-            markerfacecolor=bgcolor,
-            markeredgecolor=color,
-            markersize=markersize,
+            markerfacecolor='none', #color,
+            markeredgecolor=bgcolor,
+            markersize=markersize - 3,
             label=label,
             markeredgewidth=markeredgewidth,
             transform=psm.identity,
@@ -171,8 +173,8 @@ def make_anim(
     plt.xticks([])
     plt.yticks([])
 
-    # plt.tight_layout()
-    plt.subplots_adjust(bottom=bottom_adjust, top=top_adjust)
+    plt.tight_layout()
+    # plt.subplots_adjust(bottom=bottom_adjust, top=top_adjust)
 
     def init():
         for i in range(2 * n_fleets + 1):
@@ -187,7 +189,19 @@ def make_anim(
         if show_ungrouped:
             lons = df.lon.values + 360 * (df.lon.values < 0)
             lats = df.lat.values
-            mask = [y in ssvid_set for y in df.ssvid]
+            # mask = [y in ssvid_set for y in df.ssvid]
+
+            fleet_ssvids = []
+            for j, fid in enumerate(fleet_ids):
+                fid = fleet_ids[j]
+                if fleets and fid not in fleets:
+                    continue
+                # if isinstance(fleet_map.get(fid, ()), list):
+                # print(fleet_map.get(fid, ()))
+                fleet_ssvids += fleet_map.get(fid, ())
+                # print('done')
+            mask = [y.is_foc and y.ssvid not in set(fleet_ssvids) for y in df.itertuples()]
+            # mask = [y not in set(fleet_ssvids) for y in df.ssvid]
             point_sets[0].set_data(lons[mask], lats[mask])
         else:
             point_sets[0].set_data([], [])
@@ -197,7 +211,7 @@ def make_anim(
                 continue
             fleet_ssvids = set(fleet_map.get(fid, ()))
             mask = [
-                (y.ssvid in fleet_ssvids and bool(y.iscarrier)) for y in df.itertuples()
+                (y.ssvid in fleet_ssvids and bool(y.is_foc)) for y in df.itertuples()
             ]
             if sum(mask):
                 lons = df.lon[mask].values + 360 * (df.lon[mask].values < 0)
@@ -206,7 +220,7 @@ def make_anim(
                 lons = lats = []
             point_sets[2 * j + 1].set_data(lons, lats)
             mask = [
-                (y.ssvid in fleet_ssvids and not y.iscarrier) for y in df.itertuples()
+                (y.ssvid in fleet_ssvids and not y.is_foc) for y in df.itertuples()
             ]
             if sum(mask):
                 lons = df.lon[mask].values + 360 * (df.lon[mask].values < 0)
@@ -214,7 +228,7 @@ def make_anim(
             else:
                 lons = lats = []
             point_sets[2 * j + 2].set_data(lons, lats)
-        title.set_text(datestr)
+        title.set_text(datestr[:4] + '-' + datestr[4:6] + '-' + datestr[6:])
         return point_sets[::-1]
 
     if plot_frame is not None:

@@ -13,11 +13,11 @@
 #     name: py37
 # ---
 
-# # Fleet Clustering
+# # Fleet Clustering - Taiwan FOC
 #
-# ### Tim Hochberg, 2019-01-16
+# ### Update by Jaeyoon Park, 2022-01-14
 #
-# ## Longliner Edition
+# ## Taiwan FOC clustering and others vessels 
 #
 # We cluster vessel using HDBSCAN and a custom metric to derive fleets
 # that are related in the sense that they spend a lot of time in the same
@@ -27,7 +27,6 @@
 #
 # * Other notebooks in https://github.com/GlobalFishingWatch/fleet-clustering for 
 # examples of clustering Squid Jiggers, etc.
-# * This workspace that Nate put together: https://globalfishingwatch.org/map/workspace/udw-v2-85ff8c4f-fbfe-4126-b067-4d94cdd2b737
 
 from __future__ import print_function
 from __future__ import division
@@ -47,14 +46,12 @@ from fleet_clustering import distances
 from fleet_clustering import animation
 
 # ## Load the list of Taiwan FOC vessels to BQ
-# Upload the list of TWN FOC vessels to BQ scratch bucket
+# Upload the list of TWN FOC vessels to BQ scratch bucket -- Run it only once
 
 # +
-# # !gcloud auth login
+# df = pd.read_excel('./TWN-FOC/Final MMSI list July & Oct.xlsx')
+# df.to_gbq('scratch_jaeyoon.twn_foc_final_mmsis', project_id='world-fishing-827', if_exists='replace')
 # -
-
-df = pd.read_excel('./TWN-FOC/Final MMSI list July & Oct.xlsx')
-df.to_gbq('scratch_jaeyoon.twn_foc_final_mmsis', project_id='world-fishing-827', if_exists='replace')
 
 #
 # Flatten the list of MMSIs associated with the same vessel into separate rows
@@ -139,9 +136,6 @@ dists_by_date = {}
 valid_ssvid_by_date = {}
 
 for start_date, end_date in [
-#     ("20160101", "20161231"),
-#     ("20170101", "20171231"),
-#     ("20190101", "20191231"),
     ("20200101", "20201231"),
     ("20210101", "20211231"),
 ]:
@@ -158,7 +152,7 @@ for start_date, end_date in [
     dists = distances.compute_distances_4(C, gamma=2)
     dists_by_date[start_date] = dists
 
-# ## Load Carrier Data
+# ## Load Carrier Data (not used currently)
 
 # +
 # carriers_by_date = bq.load_carriers_by_year(2019, 2020)
@@ -178,7 +172,7 @@ for start_date, end_date in [
 # valid_carrier_ssvid_set = set(valid_carrier_ssvid)
 # -
 
-# ## Load Encounters Data And Country Codes
+# ## Load Encounters Data And Country Codes (not used currently)
 #
 # This is used to filter the carrier vessels down to only those
 # that meet with target vessels and to add iso3 labels to outputs
@@ -206,13 +200,16 @@ for start_date, dists in dists_by_date.items():
     clusterer.fit(dists)
     raw_clusterers[start_date] = clusterer
 
-raw_clusterers['20200101'].labels_.shape
-
 
 # ## Set up Fleets
 #
 # Set up the fleets for viewing.
 
+#
+# As we process the clustering with vessels including both Taiwanese FOC and Taiwanese flagged,
+# there would be clusters that uniquely contain Taiwanese flagged vessels.
+# We are interested in clusters that have at least some FOC vessels, which means
+# we should remove those clusters only with Taiwanese flagged ones.
 def select_fleets_with_foc(joint_ssvid, labels):
     gr = pd.DataFrame({'mmsi': joint_ssvid, 'label': labels})
     gr['mmsi'] = gr['mmsi'].astype(str)

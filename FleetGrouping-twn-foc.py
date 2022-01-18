@@ -238,23 +238,10 @@ def to_rgb(string):
 
 def find_labels(dists, valid_ssvid):
     clusterer = hdbscan.HDBSCAN(metric='precomputed', 
-                                min_cluster_size=5).fit(dists)
+                                min_cluster_size=4).fit(dists)
     
-#     all_fleet_ssvid_set = set([s for (s, f) in zip(valid_ssvid, clusterer.labels_) if f >= 0])
-#     valid_ssvid_set = set(valid_ssvid)
-#     all_fleet_reefer_ssvid_set = set()
-#     for x in encounters.itertuples():
-#         if x.ssvid_1 in all_fleet_ssvid_set and x.ssvid_2 in valid_carrier_ssvid_set:
-#             all_fleet_reefer_ssvid_set.add(x.ssvid_2)
-#         if x.ssvid_2 in all_fleet_ssvid_set and x.ssvid_1 in valid_carrier_ssvid_set:
-#             all_fleet_reefer_ssvid_set.add(x.ssvid_1)
-#     all_fleet_reefer_ssvid = sorted(all_fleet_reefer_ssvid_set)
-
-#     valid_ssvid_set = set(valid_ssvid)
-#     carrier_ids = [x for x in all_fleet_reefer_ssvid if x not in valid_ssvid_set]
-#     focs = df_foc.mmsi.values
     joint_ssvid = valid_ssvid #+ sorted(focs)#+ sorted(carrier_ids) 
-    labels = list(clusterer.labels_) #+ [max(clusterer.labels_) + 1] * len(focs) #+ [max(clusterer.labels_) + 1] * len(carrier_ids) 
+    labels = list(clusterer.labels_) #+ [max(clusterer.labels_) + 1] * len(carrier_ids) 
 
     # Remove vessels that have no connection to other vessels
     for i, ssvid in enumerate(valid_ssvid):
@@ -283,9 +270,8 @@ def create_fleet_mapping(labels, mark_foc=False):
     for i, fid in enumerate(fleet_ids): #_without_carriers):
         b = (i // (2 * (n_hues))) % 2
         c = (i)% (n_hues)
-        d = i  % 4 #2
-        print(b,c,d)
-        symbol = 'osd^v'[d]#'H^sX'[d]
+        d = i  % 4 
+        symbol = 'osd^v'[d]
         assert (b, c, d) not in used, (i, b, c, d)
         used.add((b, c, d))
         sat = 1
@@ -303,13 +289,14 @@ def create_fleet_mapping(labels, mark_foc=False):
         sz = [9, 7][b]
         fleets[fid] = (symbol, tuple(fg), tuple(bg), sz, w,  str(i + 1))
 
-#     if mark_foc:
-#         fleets[max(labels)] = ('.', 'w', 'w', 8, 2, 'FOC')
-        
     print(len(set([x for x in fleets if x != -1])), "fleets")
     return fleets
     
 
+
+# -
+
+# ## Clustering for 2020
 
 # +
 import imp; imp.reload(animation)
@@ -331,14 +318,17 @@ anim = animation.make_anim(lst_ssvids,
                            fleets=fleets, 
                            show_ungrouped=True,
                            alpha=0.8,
-                           legend_cols=12,
+                           legend_cols=8,
                            ungrouped_legend="Ungrouped")
 HTML(anim.to_html5_video())
 # Writer = mpl_animation.writers['ffmpeg']
 # writer = Writer(fps=8, metadata=dict(artist='Me'), bitrate=1800)
 # anim.save('./TWN_FOC/fleet_clustering_twn_foc_2020.mp4', writer=writer,
 #           savefig_kwargs={'facecolor':'#222D4B'})
+# -
 
+
+# ## Clustering for 2021
 
 # +
 import imp; imp.reload(animation)
@@ -360,7 +350,7 @@ anim = animation.make_anim(lst_ssvids,
                            fleets=fleets, 
                            show_ungrouped=True,
                            alpha=0.8,
-                           legend_cols=12,
+                           legend_cols=5,
                            ungrouped_legend="Ungrouped")
 HTML(anim.to_html5_video())
 # Writer = mpl_animation.writers['ffmpeg']
@@ -385,6 +375,35 @@ def print_fleets(fleets, labels, joint_ssvid):
             print('\t', country, ':', count)
 
 
-print_fleets(fleets, lst_labels, lst_ssvids)
+# +
+# print_fleets(fleets, lst_labels, lst_ssvids)
+# -
+
+def save_fleets(fleets, labels, joint_ssvid, table_name=None):
+    fleet_list = pd.DataFrame()
+    for fid, v in fleets.items():
+        label = v[-1]
+        mask = (fid == np.array(labels))
+        ssvids = np.array(joint_ssvid)[mask]
+        
+        # Add information about FOC and flag
+        gr = pd.DataFrame({'mmsi': ssvids})
+        gr['fleet_id'] = label
+        gr = gr.merge(df_foc[['mmsi', 'foc', 'flag']], how='left', on='mmsi')
+        gr['foc'] = gr['foc'].apply(lambda x: True if x == x and x is not None and x else False)
+        gr['flag'] = gr['flag'].fillna('TWN')
+        fleet_list = pd.concat([fleet_list, gr])
+    
+    # Upload to BQ
+    if table_name:
+        fleet_list.to_gbq('scratch_jaeyoon.{}'.format(table_name), 
+                          project_id='world-fishing-827', if_exists='replace')
+    
+    return fleet_list
+
+
+fleet_list = save_fleets(fleets, lst_labels, lst_ssvids, table_name='twn_foc_clustering_2020')
+
+fleet_list
 
 

@@ -86,8 +86,9 @@ def load_raw_ais(
            lat,
            iscarrier,
            distance_from_shore_km,
-           ssvid IN (SELECT mmsi FROM
-            `world-fishing-827.scratch_jaeyoon.twn_foc_final_mmsis_flat`) AS is_foc
+           ssvid IN (SELECT DISTINCT mmsi FROM
+           # `world-fishing-827.scratch_jaeyoon.twn_foc_final_mmsis_flat`) AS is_foc
+           `scratch_cylai.00_01_FOC_checked_veseel_FG_flat`) AS is_foc
     FROM (
         SELECT a.ssvid, 
                a.year,
@@ -103,10 +104,10 @@ def load_raw_ais(
         FROM 
         thinned a
             JOIN
-        `world-fishing-827.gfw_research.vi_ssvid_v20210913` b
+        `world-fishing-827.gfw_research.vi_ssvid_v20230101` b
             ON a.ssvid = CAST(b.ssvid AS STRING)
             JOIN 
-        `world-fishing-827.vessel_database.all_vessels_v20210901` c
+        `world-fishing-827.vessel_database.all_vessels_v20230101` c
             ON a.ssvid = CAST(c.identity.ssvid AS STRING),
             unnest (registry) as r
         WHERE ( (b.best.best_vessel_class in ({}) {}) {} )
@@ -199,14 +200,14 @@ def load_carriers(start_year, end_year):
         (
             b.ssvid in (
                SELECT CAST( identity.ssvid AS STRING) FROM
-               `world-fishing-827.vessel_database.all_vessels_v20210901`,
+               `world-fishing-827.vessel_database.all_vessels_v20230101`,
                unnest (registry) as r
                WHERE  is_carrier AND r.confidence = 3
                   )
         OR
             c.ssvid in (
                SELECT CAST( identity.ssvid AS STRING) FROM
-               `world-fishing-827.vessel_database.all_vessels_v20210901`,
+               `world-fishing-827.vessel_database.all_vessels_v20230101`,
                unnest (registry) as r
                WHERE  is_carrier AND r.confidence = 3
                   )

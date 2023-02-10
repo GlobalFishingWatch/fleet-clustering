@@ -8,9 +8,9 @@
 #       format_version: '1.5'
 #       jupytext_version: 1.4.1
 #   kernelspec:
-#     display_name: py37
+#     display_name: pyseas
 #     language: python
-#     name: py37
+#     name: pyseas
 # ---
 
 # # Fleet Clustering - Taiwan FOC
@@ -68,14 +68,18 @@ q = """
 #  flag STRING
 #) AS
   
-  SELECT DISTINCT list_uvi, mmsi, shipname, callsign, CAST(imo AS STRING) AS imo, flag, TRUE AS foc
-  FROM (
-    SELECT 
-      list_uvi, 
-      SPLIT (mmsi, ", ") AS mmsi_array, 
-      shipname, callsign, imo, flag
-    FROM `scratch_jaeyoon.twn_foc_final_mmsis` ) 
-  LEFT JOIN UNNEST (mmsi_array) AS mmsi
+#  SELECT DISTINCT list_uvi, mmsi, shipname, callsign, CAST(imo AS STRING) AS imo, flag, TRUE AS foc
+#  FROM (
+#    SELECT 
+#      list_uvi, 
+#      SPLIT (mmsi, ", ") AS mmsi_array, 
+#      shipname, callsign, imo, flag
+#    FROM `scratch_jaeyoon.twn_foc_final_mmsis` ) 
+#  LEFT JOIN UNNEST (mmsi_array) AS mmsi
+
+#Update on Feb 2023
+SELECT mmsi, shipname, callsign, imo, flag, TRUE AS foc
+FROM `scratch_cylai.00_01_FOC_checked_veseel_FG_flat`
 """
 df_foc = pd.read_gbq(q, project_id='world-fishing-827')
 
@@ -90,7 +94,7 @@ SELECT
   ais_identity.n_callsign_mostcommon.value AS callsign,
   best.best_flag AS flag, 
   best.best_vessel_class AS vessel_class
-FROM `gfw_research.vi_ssvid_byyear_v20210913`
+FROM `gfw_research.vi_ssvid_byyear_v20230101`
 WHERE best.best_flag = "TWN"
   AND year >= 2019
   AND (on_fishing_list_best 
@@ -106,15 +110,17 @@ len(df_foc), len(df_twn)
 # Load the AIS data that we use for clustering. Note that it onlyu includes vessels away
 # from shores so as to exclude clustering on ports
 
-all_by_date = bq.load_ais_by_date('', dt.date(2020, 1, 1),
+# +
+all_by_date = bq.load_ais_by_date('', dt.date(2018, 1, 1),
                                   dt.date(2021, 12, 31),
                                   fishing_only=False, 
                                   min_km_from_shore=0,
                                   ssvid=tuple(df_foc.mmsi.values) + tuple(df_twn.mmsi.values))   
-all_by_date
+
 pruned_by_date = {k : filters.remove_near_shore(10,
                             filters.remove_chinese_coast(v)) for (k, v) in all_by_date.items()}
 valid_ssvid = sorted(filters.find_valid_ssvid(pruned_by_date))
+# -
 
 len(valid_ssvid)
 
@@ -136,8 +142,10 @@ dists_by_date = {}
 valid_ssvid_by_date = {}
 
 for start_date, end_date in [
+    ("20180101", "20181231"),
+    ("20190101", "20191231"),
     ("20200101", "20201231"),
-    ("20210101", "20211231"),
+    ("20210101", "20211231")
 ]:
     if start_date in dists_by_date:
         continue
@@ -296,6 +304,99 @@ def create_fleet_mapping(labels, mark_foc=False):
 
 # -
 
+def save_fleets(fleets, labels, joint_ssvid, table_name=None):
+    fleet_list = pd.DataFrame()
+    for fid, v in fleets.items():
+        label = v[-1]
+        mask = (fid == np.array(labels))
+        ssvids = np.array(joint_ssvid)[mask]
+        
+        # Add information about FOC and flag
+        gr = pd.DataFrame({'mmsi': ssvids})
+        gr['fleet_id'] = label
+        gr = gr.merge(df_foc[['mmsi', 'foc', 'flag']], how='left', on='mmsi')
+        gr['foc'] = gr['foc'].apply(lambda x: True if x == x and x is not None and x else False)
+        gr['flag'] = gr['flag'].fillna('TWN')
+        fleet_list = pd.concat([fleet_list, gr])
+    
+    # Upload to BQ
+    if table_name:
+        fleet_list.to_gbq('{}'.format(table_name), 
+                          project_id='world-fishing-827', if_exists='replace')
+    
+    return fleet_list
+
+
+# ## Clustering for 2018
+
+# +
+import imp; imp.reload(animation)
+start_date = '20180101'
+end_date = '20181231'
+lst_ssvids, lst_labels = find_labels(dists_by_date[start_date], 
+                   valid_ssvid_by_date[start_date])
+
+all_pos_by_date = {k : v for (k, v) in all_by_date.items() if start_date <= k <= end_date}
+
+lst_ssvids, lst_labels = select_fleets_with_foc(lst_ssvids, lst_labels)
+
+fleets = create_fleet_mapping(lst_labels, mark_foc=True)
+
+anim = animation.make_anim(lst_ssvids, 
+                           lst_labels, 
+                           all_pos_by_date, 
+                           interval=10,
+                           fleets=fleets, 
+                           show_ungrouped=True,
+                           alpha=0.8,
+                           legend_cols=8,
+                           ungrouped_legend="Ungrouped")
+HTML(anim.to_html5_video())
+# Writer = mpl_animation.writers['ffmpeg']
+# writer = Writer(fps=8, metadata=dict(artist='Me'), bitrate=1800)
+# anim.save('./TWN_FOC/fleet_clustering_twn_foc_2020.mp4', writer=writer,
+#           savefig_kwargs={'facecolor':'#222D4B'})
+# -
+
+
+fleet_list = save_fleets(fleets, lst_labels, lst_ssvids, table_name='scratch_jaeyoon.twn_foc_clustering_2018')
+fleet_list
+
+# ## Clustering for 2019
+
+# +
+import imp; imp.reload(animation)
+start_date = '20190101'
+end_date = '20191231'
+lst_ssvids, lst_labels = find_labels(dists_by_date[start_date], 
+                   valid_ssvid_by_date[start_date])
+
+all_pos_by_date = {k : v for (k, v) in all_by_date.items() if start_date <= k <= end_date}
+
+lst_ssvids, lst_labels = select_fleets_with_foc(lst_ssvids, lst_labels)
+
+fleets = create_fleet_mapping(lst_labels, mark_foc=True)
+
+anim = animation.make_anim(lst_ssvids, 
+                           lst_labels, 
+                           all_pos_by_date, 
+                           interval=10,
+                           fleets=fleets, 
+                           show_ungrouped=True,
+                           alpha=0.8,
+                           legend_cols=8,
+                           ungrouped_legend="Ungrouped")
+HTML(anim.to_html5_video())
+# Writer = mpl_animation.writers['ffmpeg']
+# writer = Writer(fps=8, metadata=dict(artist='Me'), bitrate=1800)
+# anim.save('./TWN_FOC/fleet_clustering_twn_foc_2020.mp4', writer=writer,
+#           savefig_kwargs={'facecolor':'#222D4B'})
+# -
+
+
+fleet_list = save_fleets(fleets, lst_labels, lst_ssvids, table_name='scratch_jaeyoon.twn_foc_clustering_2019')
+fleet_list
+
 # ## Clustering for 2020
 
 # +
@@ -327,6 +428,9 @@ HTML(anim.to_html5_video())
 #           savefig_kwargs={'facecolor':'#222D4B'})
 # -
 
+
+fleet_list = save_fleets(fleets, lst_labels, lst_ssvids, table_name='scratch_jaeyoon.twn_foc_clustering_2020')
+fleet_list
 
 # ## Clustering for 2021
 
@@ -360,6 +464,64 @@ HTML(anim.to_html5_video())
 # -
 
 
+fleet_list = save_fleets(fleets, lst_labels, lst_ssvids, table_name='scratch_jaeyoon.twn_foc_clustering_2021')
+fleet_list
+
+# ## 2018-2021
+
+dists_by_date_allyear = {}
+valid_ssvid_by_date_allyear = {}
+
+for start_date, end_date in [
+    ("20180101", "20211231")
+]:
+    if start_date in dists_by_date_allyear:
+        continue
+    print("computing distance for", start_date, end_date)
+    subset_by_date = {
+        k: v for (k, v) in pruned_by_date.items() if start_date <= k <= end_date
+    }
+    valid_ssvid_by_date_allyear[start_date] = sorted(filters.find_valid_ssvid(subset_by_date))
+    C = distances.create_composite_lonlat_array(
+        subset_by_date, valid_ssvid_by_date_allyear[start_date]
+    )
+    dists = distances.compute_distances_4(C, gamma=2)
+    dists_by_date_allyear[start_date] = dists
+
+# +
+import imp; imp.reload(animation)
+start_date = '20180101'
+end_date = '20211231'
+lst_ssvids, lst_labels = find_labels(dists_by_date_allyear[start_date], 
+                   valid_ssvid_by_date_allyear[start_date])
+
+all_pos_by_date = {k : v for (k, v) in all_by_date.items() if start_date <= k <= end_date}
+
+lst_ssvids, lst_labels = select_fleets_with_foc(lst_ssvids, lst_labels)
+
+fleets = create_fleet_mapping(lst_labels, mark_foc=True)
+
+anim = animation.make_anim(lst_ssvids, 
+                           lst_labels, 
+                           all_pos_by_date, 
+                           interval=10,
+                           fleets=fleets, 
+                           show_ungrouped=True,
+                           alpha=0.8,
+                           legend_cols=5,
+                           ungrouped_legend="Ungrouped")
+HTML(anim.to_html5_video())
+# Writer = mpl_animation.writers['ffmpeg']
+# writer = Writer(fps=8, metadata=dict(artist='Me'), bitrate=1800)
+# anim.save('./TWN_FOC/fleet_clustering_twn_foc_2021.mp4', writer=writer,
+#           savefig_kwargs={'facecolor':'#222D4B'})
+# -
+
+
+fleet_list = save_fleets(fleets, lst_labels, lst_ssvids, table_name='scratch_jaeyoon.twn_foc_clustering_2018to2021')
+fleet_list
+
+
 # ## Print Out Typical Fleet Membership
 
 def print_fleets(fleets, labels, joint_ssvid):
@@ -374,36 +536,8 @@ def print_fleets(fleets, labels, joint_ssvid):
         for country, count in c.most_common():
             print('\t', country, ':', count)
 
-
 # +
 # print_fleets(fleets, lst_labels, lst_ssvids)
 # -
-
-def save_fleets(fleets, labels, joint_ssvid, table_name=None):
-    fleet_list = pd.DataFrame()
-    for fid, v in fleets.items():
-        label = v[-1]
-        mask = (fid == np.array(labels))
-        ssvids = np.array(joint_ssvid)[mask]
-        
-        # Add information about FOC and flag
-        gr = pd.DataFrame({'mmsi': ssvids})
-        gr['fleet_id'] = label
-        gr = gr.merge(df_foc[['mmsi', 'foc', 'flag']], how='left', on='mmsi')
-        gr['foc'] = gr['foc'].apply(lambda x: True if x == x and x is not None and x else False)
-        gr['flag'] = gr['flag'].fillna('TWN')
-        fleet_list = pd.concat([fleet_list, gr])
-    
-    # Upload to BQ
-    if table_name:
-        fleet_list.to_gbq('scratch_jaeyoon.{}'.format(table_name), 
-                          project_id='world-fishing-827', if_exists='replace')
-    
-    return fleet_list
-
-
-fleet_list = save_fleets(fleets, lst_labels, lst_ssvids, table_name='twn_foc_clustering_2020')
-
-fleet_list
 
 

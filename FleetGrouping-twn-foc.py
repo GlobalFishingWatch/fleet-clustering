@@ -83,6 +83,11 @@ FROM `scratch_cylai.00_01_FOC_checked_veseel_FG_flat`
 """
 df_foc = pd.read_gbq(q, project_id='world-fishing-827')
 
+q = """SELECT cast (ssvid as string) as mmsi, n_shipname as shipname, geartype_s, cast (imo as string) as imo, flag, TRUE AS foc
+FROM `scratch_cylai.FOC_vessels_lists_for_RA`
+WHERE year = 2021"""
+df_foc = pd.read_gbq(q, project_id='world-fishing-827')
+
 #
 # Flatten the list of MMSIs associated with the same vessel into separate rows
 #
@@ -112,7 +117,7 @@ len(df_foc), len(df_twn)
 
 # +
 all_by_date = bq.load_ais_by_date('', dt.date(2018, 1, 1),
-                                  dt.date(2021, 12, 31),
+                                  dt.date(2018, 1, 31),
                                   fishing_only=False, 
                                   min_km_from_shore=0,
                                   ssvid=tuple(df_foc.mmsi.values) + tuple(df_twn.mmsi.values))   
@@ -143,9 +148,9 @@ valid_ssvid_by_date = {}
 
 for start_date, end_date in [
     ("20180101", "20181231"),
-    ("20190101", "20191231"),
-    ("20200101", "20201231"),
-    ("20210101", "20211231")
+#     ("20190101", "20191231"),
+#     ("20200101", "20201231"),
+#     ("20210101", "20211231")
 ]:
     if start_date in dists_by_date:
         continue
@@ -328,6 +333,35 @@ def save_fleets(fleets, labels, joint_ssvid, table_name=None):
 
 
 # ## Clustering for 2018
+
+# +
+import imp; imp.reload(animation)
+start_date = '20180101'
+end_date = '20181231'
+lst_ssvids, lst_labels = find_labels(dists_by_date[start_date], 
+                   valid_ssvid_by_date[start_date])
+
+all_pos_by_date = {k : v for (k, v) in all_by_date.items() if start_date <= k <= end_date}
+
+lst_ssvids, lst_labels = select_fleets_with_foc(lst_ssvids, lst_labels)
+
+fleets = create_fleet_mapping(lst_labels, mark_foc=True)
+
+anim = animation.make_anim(lst_ssvids, 
+                           lst_labels, 
+                           all_pos_by_date, 
+                           interval=10,
+                           fleets=fleets, 
+                           show_ungrouped=True,
+                           alpha=0.8,
+                           legend_cols=8,
+                           ungrouped_legend="Ungrouped")
+HTML(anim.to_html5_video())
+# Writer = mpl_animation.writers['ffmpeg']
+# writer = Writer(fps=8, metadata=dict(artist='Me'), bitrate=1800)
+# anim.save('./TWN_FOC/fleet_clustering_twn_foc_2020.mp4', writer=writer,
+#           savefig_kwargs={'facecolor':'#222D4B'})
+
 
 # +
 import imp; imp.reload(animation)
